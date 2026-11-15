@@ -1,0 +1,843 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  VENDOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum VendorStatus {
+  INCOMPLETE
+  AWAITING_PAYMENT
+  PAYMENT_VERIFIED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum MealStatus {
+  DRAFT
+  PUBLISHED
+  SOLD_OUT
+  ARCHIVED
+}
+
+enum OrderStatus {
+  ORDER_PLACED
+  PAYMENT_CONFIRMED
+  ORDER_ACCEPTED
+  PREPARING
+  READY_FOR_PICKUP
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentPurpose {
+  FOOD_ORDER
+  VENDOR_REGISTRATION
+  VENDOR_SUBSCRIPTION
+  WALLET_TOP_UP
+}
+
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum FoodImageStatus {
+  PENDING
+  NEEDS_REVIEW
+  VERIFIED
+  AWAITING_IMAGE
+  FAILED
+}
+
+enum PaymentProvider {
+  PAYSTACK
+  FLUTTERWAVE
+  CASH
+  MANUAL
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PENDING_PAYMENT
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+}
+
+model User {
+  id                   String                    @id @default(cuid())
+  email                String                    @unique
+  passwordHash         String
+  fullName             String
+  phone                String?                   @unique
+  role                 UserRole                  @default(CUSTOMER)
+  status               UserStatus                @default(ACTIVE)
+  sessionVersion       Int                       @default(0)
+  emailVerifiedAt      DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  customerProfile      CustomerProfile?
+  vendorProfile        VendorProfile?
+  addresses            Address[]
+  carts                Cart[]
+  customerOrders       Order[]                   @relation("CustomerOrders")
+  reviews              Review[]
+  notifications        Notification[]
+  approvedVendors      VendorProfile[]           @relation("VendorApprovedBy")
+  reviewedApplications VendorApplication[]       @relation("ApplicationReviewedBy")
+  activityLogs         ActivityLog[]             @relation("ActivityActor")
+  trackingUpdates      OrderTracking[]           @relation("TrackingActor")
+  payments             Payment[]                 @relation("UserPayments")
+  wallet               WalletAccount?
+  passwordResetCode    AccountPasswordResetCode?
+  emailMessages        EmailMessage[]
+  verificationToken    EmailVerificationToken?
+  notificationPreference NotificationPreference?
+  following            VendorFollow[]
+
+  @@index([role, status])
+  @@index([createdAt])
+}
+
+model AccountPasswordResetCode {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model AdminCredential {
+  id             String   @id @default("primary")
+  passwordHash   String
+  sessionVersion Int      @default(0)
+  updatedAt      DateTime @updatedAt
+}
+
+model AdminPasswordResetCode {
+  email     String    @id
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+model CustomerProfile {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  avatarUrl String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  favorites Favorite[]
+}
+
+model VendorProfile {
+  id                    String                 @id @default(cuid())
+  userId                String                 @unique
+  businessName          String
+  businessPhone         String
+  location              String
+  businessAddress       String?
+  description           String
+  categoryId            String?
+  logoUrl               String?
+  coverUrl              String?
+  status                VendorStatus           @default(INCOMPLETE)
+  openingTime           String?
+  closingTime           String?
+  deliveryEnabled       Boolean                @default(true)
+  pickupEnabled         Boolean                @default(true)
+  approvedAt            DateTime?
+  approvedById          String?
+  rejectionReason       String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy            User?                  @relation("VendorApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  category              Category?              @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  restaurant            Restaurant?
+  applications          VendorApplication[]
+  subscriptions         VendorSubscription[]
+  vendorOrders          VendorOrder[]
+  payouts               Payout[]
+  payoutPhoneCode       VendorPayoutPhoneCode?
+  payoutPhone           String?
+  payoutNetwork         String?
+  payoutPhoneVerifiedAt DateTime?
+  followers             VendorFollow[]
+
+  @@index([status, createdAt])
+}
+
+model VendorApplication {
+  id              String        @id @default(cuid())
+  vendorId        String
+  status          VendorStatus  @default(AWAITING_PAYMENT)
+  businessName    String
+  businessAddress String
+  submittedAt     DateTime      @default(now())
+  reviewedAt      DateTime?
+  reviewedById    String?
+  reviewReason    String?
+  vendor          VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  reviewedBy      User?         @relation("ApplicationReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  payments        Payment[]
+
+  @@index([status, submittedAt])
+}
+
+model Restaurant {
+  id              String        @id @default(cuid())
+  vendorId        String        @unique
+  categoryId      String?
+  slug            String        @unique
+  name            String
+  description     String
+  location        String
+  logoUrl         String?
+  coverUrl        String?
+  isVisible       Boolean       @default(false)
+  isPaused        Boolean       @default(false)
+  deliveryEnabled Boolean       @default(true)
+  pickupEnabled   Boolean       @default(true)
+  openingTime     String?
+  closingTime     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  vendor          VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  category        Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  meals           Meal[]
+  reviews         Review[]
+  favorites       Favorite[]
+  vendorOrders    VendorOrder[]
+
+  @@index([isVisible, isPaused])
+  @@index([categoryId])
+}
+
+model Category {
+  id          String          @id @default(cuid())
+  name        String          @unique
+  slug        String          @unique
+  description String?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  restaurants Restaurant[]
+  vendors     VendorProfile[]
+  meals       Meal[]
+  templates   MenuTemplate[]
+}
+
+model MenuTemplate {
+  id               String          @id @default(cuid())
+  categoryId       String
+  name             String
+  description      String
+  imageUrl         String?
+  imageSourceUrl   String?
+  imageAuthor      String?
+  imageLicense     String?
+  imageLicenseUrl  String?
+  imageSha256      String?
+  imageStatus      FoodImageStatus @default(PENDING)
+  imageImportError String?
+  imageLastTriedAt DateTime?
+  imageImportTries Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  category         Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, name])
+  @@index([name])
+  @@index([imageStatus, imageLastTriedAt])
+  @@index([imageSha256])
+}
+
+model Meal {
+  id                 String            @id @default(cuid())
+  restaurantId       String
+  categoryId         String?
+  name               String
+  slug               String
+  description        String
+  price              Decimal           @db.Decimal(10, 2)
+  discountedPrice    Decimal?          @db.Decimal(10, 2)
+  smallPrice         Decimal?          @db.Decimal(10, 2)
+  mediumPrice        Decimal?          @db.Decimal(10, 2)
+  largePrice         Decimal?          @db.Decimal(10, 2)
+  preparationMinutes Int?
+  isAvailable        Boolean           @default(true)
+  status             MealStatus        @default(DRAFT)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  restaurant         Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  category           Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  images             MealImage[]
+  cartItems          CartItem[]
+  orderItems         VendorOrderItem[]
+  reviews            Review[]
+  favorites          Favorite[]
+
+  @@unique([restaurantId, slug])
+  @@index([restaurantId, status, isAvailable])
+  @@index([categoryId])
+}
+
+model MealImage {
+  id         String   @id @default(cuid())
+  mealId     String
+  url        String
+  storageKey String?
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  meal       Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@index([mealId, sortOrder])
+}
+
+model Cart {
+  id             String     @id @default(cuid())
+  customerId     String?
+  guestTokenHash String?    @unique
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  customer       User?      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items          CartItem[]
+
+  @@index([customerId])
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  mealId    String
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  meal      Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, mealId])
+  @@index([mealId])
+}
+
+model Address {
+  id            String   @id @default(cuid())
+  userId        String
+  label         String
+  recipientName String
+  phone         String
+  addressLine   String
+  city          String
+  region        String
+  deliveryNotes String?
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders        Order[]
+
+  @@index([userId, isDefault])
+}
+
+model Order {
+  id                   String              @id @default(cuid())
+  orderNumber          String              @unique
+  customerId           String?
+  addressId            String?
+  guestName            String?
+  guestEmail           String?
+  guestPhone           String
+  deliveryAddress      String?
+  deliveryInstructions String?
+  fulfillmentType      String
+  paymentMethod        String              @default("MOBILE_MONEY")
+  status               OrderStatus         @default(ORDER_PLACED)
+  paymentStatus        PaymentStatus       @default(PENDING)
+  subtotal             Decimal             @db.Decimal(10, 2)
+  deliveryFee          Decimal             @default(0) @db.Decimal(10, 2)
+  deliveryFeePayment   String              @default("UPFRONT")
+  platformFee          Decimal             @default(0) @db.Decimal(10, 2)
+  total                Decimal             @db.Decimal(10, 2)
+  currency             String              @default("GHS")
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  customer             User?               @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: SetNull)
+  address              Address?            @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  vendorOrders         VendorOrder[]
+  payments             Payment[]
+  tracking             OrderTracking[]
+  refunds              Refund[]
+  walletTransactions   WalletTransaction[]
+
+  @@index([customerId, createdAt])
+  @@index([status, createdAt])
+  @@index([paymentStatus, createdAt])
+}
+
+model VendorOrder {
+  id            String            @id @default(cuid())
+  orderId       String
+  vendorId      String
+  restaurantId  String
+  status        OrderStatus       @default(ORDER_PLACED)
+  subtotal      Decimal           @db.Decimal(10, 2)
+  commission    Decimal           @default(0) @db.Decimal(10, 2)
+  vendorEarning Decimal           @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  order         Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  vendor        VendorProfile     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  restaurant    Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  items         VendorOrderItem[]
+  tracking      OrderTracking[]
+
+  @@unique([orderId, vendorId])
+  @@index([vendorId, status, createdAt])
+  @@index([restaurantId, createdAt])
+}
+
+model VendorOrderItem {
+  id            String      @id @default(cuid())
+  vendorOrderId String
+  mealId        String?
+  nameSnapshot  String
+  portionSize   String?
+  price         Decimal     @db.Decimal(10, 2)
+  quantity      Int
+  lineTotal     Decimal     @db.Decimal(10, 2)
+  vendorOrder   VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Cascade)
+  meal          Meal?       @relation(fields: [mealId], references: [id], onDelete: SetNull)
+
+  @@index([mealId])
+}
+
+model OrderTracking {
+  id            String       @id @default(cuid())
+  orderId       String
+  vendorOrderId String?
+  status        OrderStatus
+  note          String?
+  createdAt     DateTime     @default(now())
+  actorId       String?
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  vendorOrder   VendorOrder? @relation(fields: [vendorOrderId], references: [id], onDelete: Cascade)
+  actor         User?        @relation("TrackingActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@index([vendorOrderId, createdAt])
+}
+
+model Payment {
+  id                 String             @id @default(cuid())
+  reference          String             @unique
+  providerReference  String?            @unique
+  senderName         String?
+  senderMobileNumber String?
+  senderNetwork      String?
+  provider           PaymentProvider
+  purpose            PaymentPurpose
+  status             PaymentStatus      @default(PENDING)
+  amount             Decimal            @db.Decimal(10, 2)
+  currency           String             @default("GHS")
+  userId             String?
+  orderId            String?
+  applicationId      String?
+  idempotencyKey     String?            @unique
+  verifiedAt         DateTime?
+  providerResponse   Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User?              @relation("UserPayments", fields: [userId], references: [id], onDelete: SetNull)
+  order              Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  application        VendorApplication? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  walletTransaction  WalletTransaction?
+  refunds            Refund[]
+
+  @@index([userId, createdAt])
+  @@index([status, purpose, createdAt])
+  @@index([orderId])
+}
+
+model WalletAccount {
+  id           String              @id @default(cuid())
+  userId       String              @unique
+  balance      Decimal             @default(0) @db.Decimal(12, 2)
+  currency     String              @default("GHS")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id          String                @id @default(cuid())
+  walletId    String
+  paymentId   String?               @unique
+  orderId     String?
+  type        WalletTransactionType
+  amount      Decimal               @db.Decimal(12, 2)
+  description String
+  createdAt   DateTime              @default(now())
+  wallet      WalletAccount         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  payment     Payment?              @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  order       Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([walletId, createdAt])
+  @@index([orderId])
+}
+
+model Refund {
+  id                String        @id @default(cuid())
+  paymentId         String
+  orderId           String?
+  amount            Decimal       @db.Decimal(10, 2)
+  reason            String
+  status            PaymentStatus @default(PENDING)
+  providerReference String?       @unique
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  payment           Payment       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  order             Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+}
+
+model SubscriptionPlan {
+  id            String               @id @default(cuid())
+  name          String               @unique
+  monthlyPrice  Decimal              @db.Decimal(10, 2)
+  annualPrice   Decimal?             @db.Decimal(10, 2)
+  durationDays  Int                  @default(30)
+  features      Json
+  isActive      Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  subscriptions VendorSubscription[]
+}
+
+model VendorSubscription {
+  id        String             @id @default(cuid())
+  vendorId  String
+  planId    String
+  status    SubscriptionStatus @default(PENDING_PAYMENT)
+  startsAt  DateTime?
+  renewsAt  DateTime?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  vendor    VendorProfile      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  plan      SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([vendorId, status, renewsAt])
+}
+
+model Payout {
+  id                 String        @id @default(cuid())
+  vendorId           String
+  reference          String        @unique
+  amount             Decimal       @db.Decimal(10, 2)
+  feeAmount          Decimal       @default(0) @db.Decimal(10, 2)
+  netAmount          Decimal       @default(0) @db.Decimal(10, 2)
+  destinationNumber  String?
+  destinationNetwork String?
+  currency           String        @default("GHS")
+  status             PaymentStatus @default(PENDING)
+  paidAt             DateTime?
+  createdAt          DateTime      @default(now())
+  vendor             VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  @@index([vendorId, status, createdAt])
+}
+
+model VendorPayoutPhoneCode {
+  id        String        @id @default(cuid())
+  vendorId  String        @unique
+  phone     String
+  network   String
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int           @default(0)
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+  vendor    VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model Review {
+  id           String     @id @default(cuid())
+  userId       String
+  restaurantId String
+  mealId       String?
+  rating       Int
+  comment      String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  meal         Meal?      @relation(fields: [mealId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, restaurantId, mealId])
+  @@index([restaurantId, createdAt])
+  @@index([mealId, createdAt])
+}
+
+model Favorite {
+  id                String          @id @default(cuid())
+  customerProfileId String
+  restaurantId      String?
+  mealId            String?
+  createdAt         DateTime        @default(now())
+  customerProfile   CustomerProfile @relation(fields: [customerProfileId], references: [id], onDelete: Cascade)
+  restaurant        Restaurant?     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  meal              Meal?           @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@index([customerProfileId, createdAt])
+}
+
+model Notification {
+  id            String                @id @default(cuid())
+  userId        String?
+  audience      NotificationAudience  @default(CUSTOMER)
+  category      NotificationCategory  @default(SYSTEM)
+  event         String?
+  title         String
+  body          String
+  href          String?
+  meta          Json?
+  emailMessageId String?
+  readAt        DateTime?
+  createdAt     DateTime              @default(now())
+  user          User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([audience, createdAt])
+  @@index([category, createdAt])
+}
+
+enum NotificationAudience {
+  CUSTOMER
+  VENDOR
+  ADMIN
+}
+
+enum NotificationCategory {
+  ORDER
+  PAYMENT
+  WALLET
+  PAYOUT
+  ACCOUNT
+  MARKETING
+  SYSTEM
+  SECURITY
+}
+
+enum EmailAudience {
+  CUSTOMER
+  VENDOR
+  ADMIN
+}
+
+enum EmailCategory {
+  TRANSACTIONAL
+  SECURITY
+  MARKETING
+}
+
+enum EmailStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+}
+
+model EmailMessage {
+  id                String        @id @default(cuid())
+  audience          EmailAudience
+  category          EmailCategory
+  event             String
+  toEmail           String
+  toUserId          String?
+  subject           String
+  textBody          String
+  htmlBody          String
+  status            EmailStatus   @default(QUEUED)
+  attempts          Int           @default(0)
+  maxAttempts       Int           @default(3)
+  lastError         String?
+  providerMessageId String?
+  idempotencyKey    String        @unique
+  relatedType       String?
+  relatedId         String?
+  scheduledAt       DateTime      @default(now())
+  sentAt            DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  user              User?         @relation(fields: [toUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledAt])
+  @@index([toUserId, createdAt])
+  @@index([relatedType, relatedId])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model NotificationPreference {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  orderUpdates     Boolean  @default(true)
+  walletUpdates    Boolean  @default(true)
+  payoutUpdates    Boolean  @default(true)
+  newMeals         Boolean  @default(false)
+  promotions       Boolean  @default(false)
+  unsubscribeToken String   @unique
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VendorFollow {
+  id        String        @id @default(cuid())
+  userId    String
+  vendorId  String
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vendor    VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, vendorId])
+  @@index([vendorId])
+}
+
+model Promotion {
+  id           String   @id @default(cuid())
+  code         String?  @unique
+  title        String
+  description  String?
+  discountType String
+  discount     Decimal  @db.Decimal(10, 2)
+  startsAt     DateTime
+  endsAt       DateTime
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([isActive, startsAt, endsAt])
+}
+
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  role         UserRole
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([role, permissionId])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  reason     String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("ActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId, createdAt])
+}
+
+/// P0 security: durable rate-limit buckets (additive, no impact on existing data)
+model SecurityRateLimit {
+  id           String    @id @default(cuid())
+  scope        String
+  keyHash      String
+  windowStart  DateTime
+  count        Int       @default(0)
+  blockedUntil DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([scope, keyHash, windowStart])
+  @@index([blockedUntil])
+  @@index([updatedAt])
+}
+
+/// P0 security: idempotency records for safe replay of mutating operations (additive)
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  scope          String
+  actorKey       String
+  idempotencyKey String
+  requestHash    String
+  status         String
+  responseCode   Int?
+  responseBody   Json?
+  resourceId     String?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([scope, actorKey, idempotencyKey])
+  @@index([expiresAt])
+}

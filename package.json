@@ -1,0 +1,38 @@
+{
+  "name": "eatry-hub",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "node --test lib/security/__tests__/",
+    "db:generate": "node scripts/run-prisma.mjs generate",
+    "db:migrate": "node scripts/run-prisma.mjs migrate dev",
+    "db:deploy": "node scripts/run-prisma.mjs migrate deploy",
+    "catalog:images": "node scripts/import-food-images.mjs",
+    "catalog:images:retry": "node scripts/import-food-images.mjs --retry-unmatched"
+  },
+  "dependencies": {
+    "@next/env": "^16.4.6",
+    "@prisma/client": "^6.19.0",
+    "next": "16.4.6",
+    "nodemailer": "^10.5.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "prisma": "^6.19.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5"
+  }
+}
