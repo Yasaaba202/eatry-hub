@@ -92,11 +92,19 @@ export async function GET() {
       ),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientInitializationError) {
+    const initializationFailed = error instanceof Prisma.PrismaClientInitializationError;
+    const missingEnv = ["DATABASE_URL", "DIRECT_URL"].filter((key) => !process.env[key]);
+    if (initializationFailed) {
       console.error("Marketplace database connection failed.", error);
     } else {
       console.error("Marketplace data could not be loaded.", error);
     }
-    return Response.json({ error: "The live marketplace is temporarily unavailable." }, { status: 503 });
+    return Response.json(
+      {
+        error: "The live marketplace is temporarily unavailable.",
+        code: missingEnv.length > 0 ? `MISSING_ENV:${missingEnv.join(",")}` : initializationFailed ? "DATABASE_UNREACHABLE" : "QUERY_FAILED",
+      },
+      { status: 503 },
+    );
   }
 }
