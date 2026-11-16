@@ -32,11 +32,11 @@ The PostgreSQL schema and generated Prisma client support customer and vendor ac
 3. Copy `.env.example` to `.env.local` if you have not already created it. Use the Session pooler for `DATABASE_URL` and the direct database URL for `DIRECT_URL` when your network supports it:
 
    ```env
-   DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[POOLER-HOST]:5432/postgres"
-   DIRECT_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres?sslmode=require"
+   DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[POOLER-HOST]:6543/postgres?pgbouncer=true&connection_limit=5&pool_timeout=30"
+   DIRECT_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[POOLER-HOST]:5432/postgres?sslmode=require"
    ```
 
-   Replace the example with the exact URI from Supabase; keep the password private and do not use a `NEXT_PUBLIC_` prefix.
+   Replace the example with the exact URI from Supabase; keep the password private and do not use a `NEXT_PUBLIC_` prefix. The `db.[PROJECT-REF].supabase.co` host is IPv6-only, so serverless platforms on IPv4 (including Vercel) cannot reach it; use the Supabase pooler host on ports `6543` (transaction) and `5432` (session) instead.
 4. Generate the Prisma client and apply the committed schema:
 
    ```powershell

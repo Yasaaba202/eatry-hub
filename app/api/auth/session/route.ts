@@ -60,7 +60,10 @@ export async function POST(request: Request) {
   const secret = process.env.AUTH_SESSION_SECRET;
   if (!secret || secret.length < 32) {
     return Response.json(
-      { error: "Account sign-in is not configured on this server." },
+      {
+        error: "Account sign-in is not configured on this server.",
+        code: secret ? "AUTH_SESSION_SECRET_TOO_SHORT" : "MISSING_ENV:AUTH_SESSION_SECRET",
+      },
       { status: 503 },
     );
   }
